@@ -1252,6 +1252,7 @@
       bonusCount: 0,                 // сколько бонусов получено
       totalTimerSeconds: 0,          // всего секунд работы таймера
       timerResets: 0,
+      lastTimerStartAt: null,
       lastTimerCompletionAt: null,   // для longest_gap
       longestGapMs: 0,
       // клики
@@ -2020,6 +2021,14 @@
       }
     }
 
+    // считаем промежуток между запусками таймера (а не между завершениями)
+    if (state.lastTimerStartAt) {
+      const now = Date.now();
+      const gap = now - new Date(state.lastTimerStartAt).getTime();
+      if (gap > state.longestGapMs) state.longestGapMs = gap;
+    }
+    state.lastTimerStartAt = nowIso();
+
     timerSessionStartAt = nowIso();
     timerSessionStartSec = timerSeconds;
     lastAwardedMinute = Math.floor(timerSeconds / 60);
@@ -2109,12 +2118,6 @@
       state.firstTimerDurationSec = TIMER_MAX_SECONDS;
     }
 
-    // longest_gap между завершениями часа
-    const now = Date.now();
-    if (state.lastTimerCompletionAt) {
-      const gap = now - new Date(state.lastTimerCompletionAt).getTime();
-      if (gap > state.longestGapMs) state.longestGapMs = gap;
-    }
     state.lastTimerCompletionAt = nowIso();
 
     saveState(); updateUI(); bumpCoins();
