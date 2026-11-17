@@ -1300,6 +1300,9 @@
       timerResets: 0,
       lastTimerStartAt: null,
       lastTimerCompletionAt: null,
+      timerRunning: false,
+      timerStartedAt: null,       // ISO-время запуска (для синхронизации)
+      timerBaseSeconds: 0,        // сколько секунд было на момент запуска
       longestGapMs: 0,
       feedClicks: 0, playClicks: 0,
       feedNoCoins: 0, playNoCoins: 0,
@@ -2068,12 +2071,59 @@
     if (ring) ring.style.strokeDashoffset = offset;
   }
 
+  function timerTick() {
+    if (!timerRunning) return;
+    if (timerSeconds >= TIMER_MAX_SECONDS) return;
+
+    const now = Date.now();
+    const elapsedMs = now - lastTickAt;
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+    if (elapsedSec <= 0) return;
+
+    const remaining = TIMER_MAX_SECONDS - timerSeconds;
+    const actualStep = Math.min(elapsedSec, remaining);
+
+    lastTickAt += actualStep * 1000;
+
+    const prevMinute = Math.floor(timerSeconds / 60);
+    timerSeconds += actualStep;
+    state.totalTimerSeconds += actualStep;
+
+    const currentMinute = Math.floor(timerSeconds / 60);
+    if (currentMinute > prevMinute) {
+      const delta = currentMinute - prevMinute;
+      state.coins += COINS_PER_MINUTE * delta;
+      addXp(XP_PER_MINUTE * delta);
+      lastAwardedMinute = currentMinute;
+
+      const c = getPetCenter();
+      spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
+      spawnFloatingEmojis('🪙', 2, c.x, c.y);
+      bumpCoins();
+    }
+
+    updateTimerDisplay();
+    updateUI();
+    const disp = $('timer-display');
+    disp.classList.add('tick');
+    setTimeout(() => disp.classList.remove('tick'), 200);
+
+    if (timerSeconds >= TIMER_MAX_SECONDS) {
+      finishHourBonus();
+    }
+  }
+
   function startTimer() {
     if (timerRunning || state.isDead) return;
     if (timerSeconds >= TIMER_MAX_SECONDS) return;
 
     timerRunning = true;
     state.timerStarts += 1;
+
+    // сохраняем состояние таймера в куки для синхронизации между вкладками
+    state.timerRunning = true;
+    state.timerStartedAt = nowIso();
+    state.timerBaseSeconds = timerSeconds;
 
     if (!state.firstTimerStartAt) {
       state.firstTimerStartAt = nowIso();
@@ -2099,48 +2149,7 @@
     $('start-timer').textContent = '⏸ Пауза';
     $('timer-container').classList.add('running');
 
-    timerInterval = setInterval(() => {
-      if (!timerRunning) return;
-      if (timerSeconds >= TIMER_MAX_SECONDS) return;
-
-      const now = Date.now();
-      const elapsedMs = now - lastTickAt;
-      const elapsedSec = Math.floor(elapsedMs / 1000);
-      if (elapsedSec <= 0) return;
-
-      // сколько игровых секунд добавить (в обычной версии 1 реальная = 1 игровая)
-      const step = elapsedSec;
-      // ВАЖНО: сдвигаем lastTickAt на целое число секунд, а не на now.
-      // Так остаток (например, 0.9 сек) не теряется и переносится на следующий тик.
-      lastTickAt += elapsedSec * 1000;
-
-      const prevMinute = Math.floor(timerSeconds / 60);
-      timerSeconds = Math.min(TIMER_MAX_SECONDS, timerSeconds + step);
-      state.totalTimerSeconds += step;
-
-      const currentMinute = Math.floor(timerSeconds / 60);
-      if (currentMinute > prevMinute) {
-        const delta = currentMinute - prevMinute;
-        state.coins += COINS_PER_MINUTE * delta;
-        addXp(XP_PER_MINUTE * delta);
-        lastAwardedMinute = currentMinute;
-
-        const c = getPetCenter();
-        spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
-        spawnFloatingEmojis('🪙', 2, c.x, c.y);
-        bumpCoins();
-      }
-
-      updateTimerDisplay();
-      updateUI();
-      const disp = $('timer-display');
-      disp.classList.add('tick');
-      setTimeout(() => disp.classList.remove('tick'), 200);
-
-      if (timerSeconds >= TIMER_MAX_SECONDS) {
-        finishHourBonus();
-      }
-    }, 1000);
+    timerInterval = setInterval(timerTick, 1000);
   }
 
   function pauseTimer() {
@@ -2148,6 +2157,12 @@
     clearInterval(timerInterval);
     timerRunning = false;
     lastTickAt = null;   // ← сбрасываем, чтобы при продолжении не списывать время паузы
+
+    // сохраняем состояние таймера
+    state.timerRunning = false;
+    state.timerStartedAt = null;
+    state.timerBaseSeconds = timerSeconds;
+
     $('start-timer').textContent = '▶ Продолжить';
     $('timer-container').classList.remove('running');
 
@@ -2162,6 +2177,11 @@
   function resetTimer() {
     if (timerRunning) { clearInterval(timerInterval); timerRunning = false; }
     state.timerResets += 1;
+
+    state.timerRunning = false;
+    state.timerStartedAt = null;
+    state.timerBaseSeconds = 0;
+
     timerSeconds = 0;
     timerSessionStartSec = 0;
     lastAwardedMinute = 0;
@@ -2175,6 +2195,11 @@
     clearInterval(timerInterval);
     timerRunning = false;
     lastTickAt = null;
+
+    state.timerRunning = false;
+    state.timerStartedAt = null;
+    state.timerBaseSeconds = 0;
+
     $('start-timer').textContent = '▶ Старт';
     $('timer-container').classList.remove('running');
 
@@ -2206,6 +2231,48 @@
       updateTimerDisplay();
       $('start-timer').textContent = '▶ Старт';
     }, 1500);
+  }
+
+  function syncTimerFromState() {
+    if (state.isDead) return;
+
+    if (state.timerRunning && state.timerStartedAt) {
+      const startedMs = new Date(state.timerStartedAt).getTime();
+      const now = Date.now();
+      const elapsedSec = Math.floor((now - startedMs) / 1000);
+      const newSeconds = Math.min(TIMER_MAX_SECONDS, state.timerBaseSeconds + elapsedSec);
+
+      if (newSeconds !== timerSeconds) {
+        timerSeconds = newSeconds;
+        lastAwardedMinute = Math.floor(timerSeconds / 60);
+      }
+
+      if (!timerRunning) {
+        timerRunning = true;
+        lastTickAt = now;
+        $('start-timer').textContent = '⏸ Пауза';
+        $('timer-container').classList.add('running');
+        if (!timerInterval) {
+          // перезапускаем интервал, если его не было
+          timerInterval = setInterval(timerTick, 1000);
+        }
+      }
+    } else {
+      // таймер не идёт — просто берём baseSeconds
+      const newSeconds = state.timerBaseSeconds || 0;
+      if (newSeconds !== timerSeconds) {
+        timerSeconds = newSeconds;
+      }
+      if (timerRunning) {
+        timerRunning = false;
+        if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+        lastTickAt = null;
+        $('start-timer').textContent = '▶ Продолжить';
+        $('timer-container').classList.remove('running');
+      }
+    }
+
+    updateTimerDisplay();
   }
 
   $('start-timer').addEventListener('click', () => { timerRunning ? pauseTimer() : startTimer(); });
@@ -2254,10 +2321,38 @@
     updateUI();
     updateTimerDisplay();
 
+    syncTimerFromState();
+
     if (result.message) {
       showModal(result.message.title, result.message.text);
     }
   }
+
+  // при возврате на вкладку — подтягиваем актуальное время
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      syncTimerFromState();
+      if (timerRunning) {
+        // принудительно тикаем, чтобы «догнать» пропущенное время
+        timerTick();
+      }
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    syncTimerFromState();
+    if (timerRunning) timerTick();
+  });
+
+  window.addEventListener('storage', (e) => {
+    if (e.key === COOKIE_NAME) {
+      // перечитываем state из куки
+      state = loadState();
+      syncTimerFromState();
+      updateUI();
+      if (timerRunning) timerTick();
+    }
+  });
 
   init();
 })();
