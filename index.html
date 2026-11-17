@@ -79,6 +79,40 @@
     overflow-y: auto;
   }
 
+  .scroll-hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #fff2d0;
+    border: 2px dashed var(--accent);
+    border-radius: 20px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #7a5a1a;
+    text-align: center;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+  }
+  .scroll-hint.hidden {
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .scroll-hint-arrow {
+    font-size: 16px;
+    animation: scrollHintBounce 1.4s ease-in-out infinite;
+  }
+  @keyframes scrollHintBounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(4px); }
+  }
+
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
   .header h1 { font-size: 22px; color: var(--text); font-weight: 800; letter-spacing: -0.3px; }
   .coins-badge {
@@ -105,7 +139,7 @@
     box-shadow: inset 0 -4px 0 rgba(180, 140, 80, 0.12), 0 8px 20px var(--shadow);
   }
   .pet-area.dead { background: linear-gradient(180deg, #d8cec0, #bfb3a3); }
-  .pet-area.low-hunger { animation: petLowPulse 2s ease-in-out infe; }
+  .pet-area.low-hunger { animation: petLowPulse 2s ease-in-out infinite; }
   .pet-area.low-joy { animation: petJoyPulse 2.4s ease-in-out infinite; }
   @keyframes petLowPulse {
     0%, 100% { box-shadow: inset 0 -4px 0 rgba(180, 140, 80, 0.12), 0 8px 20px var(--shadow); }
@@ -180,6 +214,7 @@
   .cat.dead .cat-tail,
   .cat.dead .cat-body,
   .cat.dead .cat-eye { animation: none; }
+
   .cat-tail {
     position: absolute;
     width: 20px;
@@ -668,7 +703,7 @@
   .nav-item:active { transform: scale(0.92); }
   .nav-emoji { font-size: 22px; }
 
-  /* ===== НОВЫЙ ТАЙМЕР: ОТ 0 ДО 60 МИНУТ ===== */
+  /* ===== ТАЙМЕР ===== */
   .timer-container {
     background: linear-gradient(180deg, #3a3228, #4a4033);
     border-radius: 60px; padding: 24px 20px 20px;
@@ -925,7 +960,6 @@
     100% { transform: translateY(-60px) scale(1); opacity: 0; }
   }
 
-  /* всплывающая награда за минуту */
   .reward-pop {
     position: absolute;
     font-size: 14px;
@@ -970,6 +1004,11 @@
       <span>📅 <span id="today-date">—</span></span>
     </div>
 
+    <div class="scroll-hint" id="scroll-hint">
+      <span class="scroll-hint-arrow">👇</span>
+      <span>Пролистай вниз — там кнопки «Покормить» и «Поиграть»</span>
+    </div>
+
     <div class="pet-area skin-default" id="pet-area">
       <div class="pet-bg-sparkles">
         <span></span><span></span><span></span><span></span><span></span>
@@ -1008,18 +1047,18 @@
       <div class="stats-row">
         <div class="stat-item" id="hunger-box">
           <span class="stat-emoji">🍖</span>
-          Сытость <span class="stat-value" id="hunger">60</span>
-          <div class="stat-bar-wrap"><div class="stat-bar" id="hunger-bar" style="width:60%"></div></div>
+          Сытость <span class="stat-value" id="hunger">35</span>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="hunger-bar" style="width:35%"></div></div>
         </div>
         <div class="stat-item" id="water-box">
           <span class="stat-emoji">💧</span>
-          Вода <span class="stat-value" id="water">60</span>
-          <div class="stat-bar-wrap"><div class="stat-bar" id="water-bar" style="width:60%"></div></div>
+          Вода <span class="stat-value" id="water">35</span>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="water-bar" style="width:35%"></div></div>
         </div>
         <div class="stat-item" id="joy-box">
           <span class="stat-emoji">💜</span>
-          Радость <span class="stat-value" id="joy">60</span>
-          <div class="stat-bar-wrap"><div class="stat-bar" id="joy-bar" style="width:60%"></div></div>
+          Радость <span class="stat-value" id="joy">35</span>
+          <div class="stat-bar-wrap"><div class="stat-bar" id="joy-bar" style="width:35%"></div></div>
         </div>
       </div>
 
@@ -1079,7 +1118,7 @@
     </div>
 
     <div class="info-note" id="timer-info">
-      Каждую минуту: +1 монета и +1 XP. На 60-й минуте — бонус и большое конфетти. Можно остановить в любой момент — накопленное останется.
+      Каждую минуту: +1 монета и +1 XP. На 60-й минуте — бонус и большое конфетти. Можно остановить в любой момент — накопленное останется. Таймер продолжает идти, даже если вкладка свёрнута.
     </div>
   </div>
 
@@ -1251,19 +1290,17 @@
       firstVisitDate: null,
       totalVisits: 0, daysVisited: 0, daysSkipped: 0,
       maxStreak: 0,
-      // таймер
-      firstTimerStartAt: null,       // ISO-дата первого запуска
-      firstTimerDayAfterVisit: null, // на какой день после захода
-      firstTimerDurationSec: 0,      // сколько проработал в первый запуск
+      firstTimerStartAt: null,
+      firstTimerDayAfterVisit: null,
+      firstTimerDurationSec: 0,
       timerStarts: 0,
-      timerCompletions: 0,           // сколько раз дошли до 60 минут
-      bonusCount: 0,                 // сколько бонусов получено
-      totalTimerSeconds: 0,          // всего секунд работы таймера
+      timerCompletions: 0,
+      bonusCount: 0,
+      totalTimerSeconds: 0,
       timerResets: 0,
       lastTimerStartAt: null,
-      lastTimerCompletionAt: null,   // для longest_gap
+      lastTimerCompletionAt: null,
       longestGapMs: 0,
-      // клики
       feedClicks: 0, playClicks: 0,
       feedNoCoins: 0, playNoCoins: 0,
       navPet: 0, navTimer: 0, navSkins: 0, navStats: 0,
@@ -1547,7 +1584,7 @@
 
     const diff = daysBetween(state.lastVisitDate, today);
     if (diff === 0) {
-      state.totalVisits += 1;   // ← добавить
+      state.totalVisits += 1;
       saveState();
       return { message: null, isDead: false };
     }
@@ -1704,7 +1741,6 @@
   }
 
   function showDeathScreen() {
-    // если экран смерти уже есть — просто обновляем текст и выходим
     if (document.getElementById('screen-death')) {
       const reason = document.getElementById('death-reason');
       if (reason) reason.textContent = state.deathReason || 'Питомец погиб.';
@@ -1713,7 +1749,6 @@
 
     const app = $('app');
 
-    // прячем все экраны через класс, снимаем инлайн-стили
     document.querySelectorAll('.screen').forEach(s => {
       s.classList.remove('active');
       s.style.display = '';
@@ -1787,7 +1822,6 @@
     $('st-max-streak').textContent = state.maxStreak;
     $('st-current-streak').textContent = state.streak;
 
-    // первый запуск
     if (state.firstTimerStartAt) {
       const d = new Date(state.firstTimerStartAt);
       const dateStr = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
@@ -2008,15 +2042,15 @@
     }
   });
 
-  // ---------- ТАЙМЕР: 0 → 60 МИНУТ ----------
+  // ---------- ТАЙМЕР: 0 → 60 МИНУТ (с расчётом по реальному времени) ----------
   let timerInterval = null;
-  let timerSeconds = 0;              // счётчик СНИЗУ ВВЕРХ, от 0 до 3600
+  let timerSeconds = 0;              // сколько игровых секунд уже натикало (0..3600)
   let timerRunning = false;
-  let timerSessionStartAt = null;    // ISO-дата текущего запуска (для первого запуска)
-  let timerSessionStartSec = 0;      // сколько секунд было на момент старта сессии
+  let timerSessionStartSec = 0;      // сколько было на момент старта сессии (для первого запуска)
   let lastAwardedMinute = 0;         // последняя минута, за которую начислено
+  let lastTickAt = null;             // реальное время последнего тика (мс) — для расчёта разницы
 
-  const RING_CIRCUMFERENCE = 2 * Math.PI * 100; // 628.3
+  const RING_CIRCUMFERENCE = 2 * Math.PI * 100;
 
   function formatTimerDisplay(totalSec) {
     const m = Math.floor(totalSec / 60);
@@ -2028,8 +2062,6 @@
     $('timer-display').textContent = formatTimerDisplay(timerSeconds);
     const mins = Math.floor(timerSeconds / 60);
     $('timer-minutes').textContent = mins + ' из 60 минут';
-
-    // прогресс-кольцо
     const progress = Math.min(1, timerSeconds / TIMER_MAX_SECONDS);
     const offset = RING_CIRCUMFERENCE * (1 - progress);
     const ring = $('timer-ring-fill');
@@ -2038,12 +2070,11 @@
 
   function startTimer() {
     if (timerRunning || state.isDead) return;
-    if (timerSeconds >= TIMER_MAX_SECONDS) return; // уже завершён час — нужно сбросить
+    if (timerSeconds >= TIMER_MAX_SECONDS) return;
 
     timerRunning = true;
     state.timerStarts += 1;
 
-    // фиксируем первый запуск
     if (!state.firstTimerStartAt) {
       state.firstTimerStartAt = nowIso();
       if (state.firstVisitDate) {
@@ -2051,7 +2082,7 @@
       }
     }
 
-    // считаем промежуток между запусками таймера (а не между завершениями)
+    // считаем промежуток с предыдущего запуска таймера
     if (state.lastTimerStartAt) {
       const now = Date.now();
       const gap = now - new Date(state.lastTimerStartAt).getTime();
@@ -2059,9 +2090,9 @@
     }
     state.lastTimerStartAt = nowIso();
 
-    timerSessionStartAt = nowIso();
     timerSessionStartSec = timerSeconds;
     lastAwardedMinute = Math.floor(timerSeconds / 60);
+    lastTickAt = Date.now();       // ← фиксируем реальное время старта тика
 
     saveState(); updateUI();
 
@@ -2069,35 +2100,45 @@
     $('timer-container').classList.add('running');
 
     timerInterval = setInterval(() => {
-      if (timerSeconds < TIMER_MAX_SECONDS) {
-        timerSeconds++;
-        state.totalTimerSeconds++;
+      if (!timerRunning) return;
+      if (timerSeconds >= TIMER_MAX_SECONDS) return;
 
-        // начисляем за каждую новую минуту
-        const currentMinute = Math.floor(timerSeconds / 60);
-        if (currentMinute > lastAwardedMinute) {
-          const delta = currentMinute - lastAwardedMinute;
-          state.coins += COINS_PER_MINUTE * delta;
-          addXp(XP_PER_MINUTE * delta);
-          lastAwardedMinute = currentMinute;
+      const now = Date.now();
+      const elapsedMs = now - lastTickAt;
+      const elapsedSec = Math.floor(elapsedMs / 1000);
+      if (elapsedSec <= 0) return;
 
-          // эффект за минуту
-          const c = getPetCenter();
-          spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
-          spawnFloatingEmojis('🪙', 2, c.x, c.y);
-          bumpCoins();
-        }
+      // сколько игровых секунд добавить (в обычной версии 1 реальная = 1 игровая)
+      const step = elapsedSec;
+      // ВАЖНО: сдвигаем lastTickAt на целое число секунд, а не на now.
+      // Так остаток (например, 0.9 сек) не теряется и переносится на следующий тик.
+      lastTickAt += elapsedSec * 1000;
 
-        updateTimerDisplay();
-        updateUI();
-        const disp = $('timer-display');
-        disp.classList.add('tick');
-        setTimeout(() => disp.classList.remove('tick'), 200);
+      const prevMinute = Math.floor(timerSeconds / 60);
+      timerSeconds = Math.min(TIMER_MAX_SECONDS, timerSeconds + step);
+      state.totalTimerSeconds += step;
 
-        // дошли до 60 минут — бонус
-        if (timerSeconds >= TIMER_MAX_SECONDS) {
-          finishHourBonus();
-        }
+      const currentMinute = Math.floor(timerSeconds / 60);
+      if (currentMinute > prevMinute) {
+        const delta = currentMinute - prevMinute;
+        state.coins += COINS_PER_MINUTE * delta;
+        addXp(XP_PER_MINUTE * delta);
+        lastAwardedMinute = currentMinute;
+
+        const c = getPetCenter();
+        spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
+        spawnFloatingEmojis('🪙', 2, c.x, c.y);
+        bumpCoins();
+      }
+
+      updateTimerDisplay();
+      updateUI();
+      const disp = $('timer-display');
+      disp.classList.add('tick');
+      setTimeout(() => disp.classList.remove('tick'), 200);
+
+      if (timerSeconds >= TIMER_MAX_SECONDS) {
+        finishHourBonus();
       }
     }, 1000);
   }
@@ -2106,10 +2147,10 @@
     if (!timerRunning) return;
     clearInterval(timerInterval);
     timerRunning = false;
+    lastTickAt = null;   // ← сбрасываем, чтобы при продолжении не списывать время паузы
     $('start-timer').textContent = '▶ Продолжить';
     $('timer-container').classList.remove('running');
 
-    // если это был первый запуск — записываем его длительность
     if (!state.firstTimerDurationSec && timerSessionStartSec !== null) {
       const dur = timerSeconds - timerSessionStartSec;
       if (dur > 0) state.firstTimerDurationSec = dur;
@@ -2122,9 +2163,9 @@
     if (timerRunning) { clearInterval(timerInterval); timerRunning = false; }
     state.timerResets += 1;
     timerSeconds = 0;
-    timerSessionStartAt = null;
     timerSessionStartSec = 0;
     lastAwardedMinute = 0;
+    lastTickAt = null;
     $('start-timer').textContent = '▶ Старт';
     $('timer-container').classList.remove('running');
     saveState(); updateTimerDisplay();
@@ -2133,17 +2174,16 @@
   function finishHourBonus() {
     clearInterval(timerInterval);
     timerRunning = false;
+    lastTickAt = null;
     $('start-timer').textContent = '▶ Старт';
     $('timer-container').classList.remove('running');
 
-    // бонус
     state.timerCompletions += 1;
     state.bonusCount += 1;
     state.coins += COINS_BONUS_60MIN;
     addXp(XP_BONUS_60MIN);
     state.joy = Math.min(100, state.joy + JOY_TIMER_BONUS);
 
-    // если это был первый запуск — фиксируем длительность 3600
     if (!state.firstTimerDurationSec) {
       state.firstTimerDurationSec = TIMER_MAX_SECONDS;
     }
@@ -2152,7 +2192,6 @@
 
     saveState(); updateUI(); bumpCoins();
 
-    // большое конфетти и эффекты
     const c = getPetCenter();
     spawnConfetti(80, c.x, c.y);
     spawnFloatingEmojis('🎉', 8, c.x, c.y);
@@ -2161,7 +2200,6 @@
 
     showToast('🎉 Час прочитан! Бонус: +' + COINS_BONUS_60MIN + ' 🪙 и +' + XP_BONUS_60MIN + ' XP');
 
-    // сбрасываем на 0, чтобы можно было начать новый час
     setTimeout(() => {
       timerSeconds = 0;
       lastAwardedMinute = 0;
@@ -2172,6 +2210,33 @@
 
   $('start-timer').addEventListener('click', () => { timerRunning ? pauseTimer() : startTimer(); });
   $('reset-timer').addEventListener('click', resetTimer);
+
+  // ---------- ПОДСКАЗКА «ПРОЛИСТАЙ ВНИЗ» ----------
+  function setupScrollHint() {
+    const screenPet = document.getElementById('screen-pet');
+    const hint = document.getElementById('scroll-hint');
+    const feedBtn = document.getElementById('feed-btn');
+    if (!screenPet || !hint || !feedBtn) return;
+
+    function checkScroll() {
+      const screenRect = screenPet.getBoundingClientRect();
+      const feedRect = feedBtn.getBoundingClientRect();
+      // если кнопка «Покормить» уже видна в зоне экрана — прячем подсказку
+      const feedVisible = feedRect.top < screenRect.bottom - 20;
+      if (feedVisible) {
+        hint.classList.add('hidden');
+      } else {
+        hint.classList.remove('hidden');
+      }
+    }
+
+    screenPet.addEventListener('scroll', checkScroll);
+    window.addEventListener('resize', checkScroll);
+    // первичная проверка после отрисовки
+    setTimeout(checkScroll, 100);
+  }
+
+  setupScrollHint();
 
   // ---------- ИНИЦИАЛИЗАЦИЯ ----------
   function init() {
