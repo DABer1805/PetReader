@@ -2228,7 +2228,13 @@
     setTimeout(() => {
       timerSeconds = 0;
       lastAwardedMinute = 0;
+      lastTickAt = null;
+      state.timerRunning = false;
+      state.timerStartedAt = null;
+      state.timerBaseSeconds = 0;
+      saveState();
       updateTimerDisplay();
+      updateUI();
       $('start-timer').textContent = '▶ Старт';
     }, 1500);
   }
@@ -2242,9 +2248,19 @@
       const elapsedSec = Math.floor((now - startedMs) / 1000);
       const newSeconds = Math.min(TIMER_MAX_SECONDS, state.timerBaseSeconds + elapsedSec);
 
-      if (newSeconds !== timerSeconds) {
+      if (newSeconds > timerSeconds) {
+        // начисляем за все минуты, которые «натикали» за время сна
+        const prevMinute = Math.floor(timerSeconds / 60);
+        const currentMinute = Math.floor(newSeconds / 60);
+        if (currentMinute > prevMinute) {
+          const delta = currentMinute - prevMinute;
+          state.coins += COINS_PER_MINUTE * delta;
+          addXp(XP_PER_MINUTE * delta);
+          lastAwardedMinute = currentMinute;
+          bumpCoins();
+          saveState();
+        }
         timerSeconds = newSeconds;
-        lastAwardedMinute = Math.floor(timerSeconds / 60);
       }
 
       if (!timerRunning) {
@@ -2253,9 +2269,14 @@
         $('start-timer').textContent = '⏸ Пауза';
         $('timer-container').classList.add('running');
         if (!timerInterval) {
-          // перезапускаем интервал, если его не было
           timerInterval = setInterval(timerTick, 1000);
         }
+      }
+
+      // если таймер дошёл до 60:00 — начисляем бонус и сбрасываем
+      if (timerSeconds >= TIMER_MAX_SECONDS) {
+        finishHourBonus();
+        return;
       }
     } else {
       // таймер не идёт — просто берём baseSeconds
@@ -2273,6 +2294,7 @@
     }
 
     updateTimerDisplay();
+    updateUI();
   }
 
   $('start-timer').addEventListener('click', () => { timerRunning ? pauseTimer() : startTimer(); });
