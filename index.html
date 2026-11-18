@@ -2258,9 +2258,14 @@
           addXp(XP_PER_MINUTE * delta);
           lastAwardedMinute = currentMinute;
           bumpCoins();
-          saveState();
         }
         timerSeconds = newSeconds;
+
+        // ВАЖНО: сдвигаем точку отсчёта, чтобы при следующем заходе
+        // не начислить те же минуты повторно
+        state.timerBaseSeconds = timerSeconds;
+        state.timerStartedAt = nowIso();
+        saveState();
       }
 
       if (!timerRunning) {
