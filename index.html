@@ -2101,6 +2101,7 @@
       state.coins += COINS_PER_MINUTE * delta;
       addXp(XP_PER_MINUTE * delta);
       state.lastAwardedMinute = currentMinute;
+      state.totalMinutes += delta;   // ← прибавляем минуты
 
       const c = getPetCenter();
       spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
@@ -2260,7 +2261,10 @@
       const newSeconds = Math.min(TIMER_MAX_SECONDS, state.timerBaseSeconds + elapsedSec);
 
       if (newSeconds > timerSeconds) {
+        const addedSec = newSeconds - timerSeconds;
         timerSeconds = newSeconds;
+        // КЛЮЧЕВОЕ: прибавляем пропущенные секунды к статистике
+        state.totalTimerSeconds += addedSec;
 
         // Начисляем только за минуты СВЕРХ lastAwardedMinute (из state)
         const currentMinute = Math.floor(timerSeconds / 60);
@@ -2270,11 +2274,10 @@
           state.coins += COINS_PER_MINUTE * delta;
           addXp(XP_PER_MINUTE * delta);
           state.lastAwardedMinute = currentMinute;
+          state.totalMinutes += delta;   // ← прибавляем минуты
           bumpCoins();
         }
 
-        // сдвигаем точку отсчёта, чтобы при следующем заходе
-        // не начислить те же минуты повторно
         state.timerBaseSeconds = timerSeconds;
         state.timerStartedAt = nowIso();
         saveState();
