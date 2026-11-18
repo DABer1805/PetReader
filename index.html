@@ -1301,8 +1301,9 @@
       lastTimerStartAt: null,
       lastTimerCompletionAt: null,
       timerRunning: false,
-      timerStartedAt: null,       // ISO-время запуска (для синхронизации)
-      timerBaseSeconds: 0,        // сколько секунд было на момент запуска
+      timerStartedAt: null,
+      timerBaseSeconds: 0,
+      lastAwardedMinute: 0,     // ← КЛЮЧЕВОЕ ПОЛЕ: за какую минуту уже начислено
       longestGapMs: 0,
       feedClicks: 0, playClicks: 0,
       feedNoCoins: 0, playNoCoins: 0,
@@ -2045,13 +2046,12 @@
     }
   });
 
-  // ---------- ТАЙМЕР: 0 → 60 МИНУТ (с расчётом по реальному времени) ----------
+  // ---------- ТАЙМЕР: 0 → 60 МИНУТ ----------
   let timerInterval = null;
-  let timerSeconds = 0;              // сколько игровых секунд уже натикало (0..3600)
+  let timerSeconds = 0;
   let timerRunning = false;
-  let timerSessionStartSec = 0;      // сколько было на момент старта сессии (для первого запуска)
-  let lastAwardedMinute = 0;         // последняя минута, за которую начислено
-  let lastTickAt = null;             // реальное время последнего тика (мс) — для расчёта разницы
+  let timerSessionStartSec = 0;
+  let lastTickAt = null;
 
   const RING_CIRCUMFERENCE = 2 * Math.PI * 100;
 
@@ -2085,27 +2085,29 @@
 
     lastTickAt += actualStep * 1000;
 
-    const prevMinute = Math.floor(timerSeconds / 60);
     timerSeconds += actualStep;
     state.totalTimerSeconds += actualStep;
 
-    // ВАЖНО: обновляем базу и точку отсчёта, чтобы при перезагрузке
-    // syncTimerFromState() не начислил те же минуты повторно
+    // КЛЮЧЕВОЕ: обновляем базу и точку отсчёта после каждого тика,
+    // чтобы syncTimerFromState() не начислил те же минуты повторно
     state.timerBaseSeconds = timerSeconds;
     state.timerStartedAt = nowIso();
 
+    // Начисляем только за минуты СВЕРХ lastAwardedMinute (из state)
     const currentMinute = Math.floor(timerSeconds / 60);
-    if (currentMinute > prevMinute) {
-      const delta = currentMinute - prevMinute;
+    const awardedMinute = state.lastAwardedMinute || 0;
+    if (currentMinute > awardedMinute) {
+      const delta = currentMinute - awardedMinute;
       state.coins += COINS_PER_MINUTE * delta;
       addXp(XP_PER_MINUTE * delta);
-      lastAwardedMinute = currentMinute;
+      state.lastAwardedMinute = currentMinute;
 
       const c = getPetCenter();
       spawnRewardPop('+' + (COINS_PER_MINUTE * delta) + ' 🪙  +' + (XP_PER_MINUTE * delta) + ' XP', c.x, c.y - 40);
       spawnFloatingEmojis('🪙', 2, c.x, c.y);
       bumpCoins();
     }
+
     saveState();
 
     updateTimerDisplay();
@@ -2126,10 +2128,10 @@
     timerRunning = true;
     state.timerStarts += 1;
 
-    // сохраняем состояние таймера в куки для синхронизации между вкладками
     state.timerRunning = true;
     state.timerStartedAt = nowIso();
     state.timerBaseSeconds = timerSeconds;
+    state.lastAwardedMinute = Math.floor(timerSeconds / 60);
 
     if (!state.firstTimerStartAt) {
       state.firstTimerStartAt = nowIso();
@@ -2138,7 +2140,6 @@
       }
     }
 
-    // считаем промежуток с предыдущего запуска таймера
     if (state.lastTimerStartAt) {
       const now = Date.now();
       const gap = now - new Date(state.lastTimerStartAt).getTime();
@@ -2147,8 +2148,7 @@
     state.lastTimerStartAt = nowIso();
 
     timerSessionStartSec = timerSeconds;
-    lastAwardedMinute = Math.floor(timerSeconds / 60);
-    lastTickAt = Date.now();       // ← фиксируем реальное время старта тика
+    lastTickAt = Date.now();
 
     saveState(); updateUI();
 
@@ -2162,12 +2162,12 @@
     if (!timerRunning) return;
     clearInterval(timerInterval);
     timerRunning = false;
-    lastTickAt = null;   // ← сбрасываем, чтобы при продолжении не списывать время паузы
+    lastTickAt = null;
 
-    // сохраняем состояние таймера
     state.timerRunning = false;
     state.timerStartedAt = null;
     state.timerBaseSeconds = timerSeconds;
+    state.lastAwardedMinute = Math.floor(timerSeconds / 60);
 
     $('start-timer').textContent = '▶ Продолжить';
     $('timer-container').classList.remove('running');
@@ -2187,10 +2187,10 @@
     state.timerRunning = false;
     state.timerStartedAt = null;
     state.timerBaseSeconds = 0;
+    state.lastAwardedMinute = 0;
 
     timerSeconds = 0;
     timerSessionStartSec = 0;
-    lastAwardedMinute = 0;
     lastTickAt = null;
     $('start-timer').textContent = '▶ Старт';
     $('timer-container').classList.remove('running');
@@ -2205,6 +2205,7 @@
     state.timerRunning = false;
     state.timerStartedAt = null;
     state.timerBaseSeconds = 0;
+    state.lastAwardedMinute = 0;
 
     $('start-timer').textContent = '▶ Старт';
     $('timer-container').classList.remove('running');
@@ -2233,11 +2234,11 @@
 
     setTimeout(() => {
       timerSeconds = 0;
-      lastAwardedMinute = 0;
       lastTickAt = null;
       state.timerRunning = false;
       state.timerStartedAt = null;
       state.timerBaseSeconds = 0;
+      state.lastAwardedMinute = 0;
       saveState();
       updateTimerDisplay();
       updateUI();
@@ -2249,25 +2250,30 @@
     if (state.isDead) return;
 
     if (state.timerRunning && state.timerStartedAt) {
+      // КЛЮЧЕВОЕ: после перезагрузки timerSeconds = 0.
+      // Выставляем его из базы, чтобы не начислить уже начисленное.
+      timerSeconds = state.timerBaseSeconds || 0;
+
       const startedMs = new Date(state.timerStartedAt).getTime();
       const now = Date.now();
       const elapsedSec = Math.floor((now - startedMs) / 1000);
       const newSeconds = Math.min(TIMER_MAX_SECONDS, state.timerBaseSeconds + elapsedSec);
 
       if (newSeconds > timerSeconds) {
-        // начисляем за все минуты, которые «натикали» за время сна
-        const prevMinute = Math.floor(timerSeconds / 60);
-        const currentMinute = Math.floor(newSeconds / 60);
-        if (currentMinute > prevMinute) {
-          const delta = currentMinute - prevMinute;
-          state.coins += COINS_PER_MINUTE * delta;
-          addXp(XP_PER_MINUTE * delta);
-          lastAwardedMinute = currentMinute;
-          bumpCoins();
-        }
         timerSeconds = newSeconds;
 
-        // ВАЖНО: сдвигаем точку отсчёта, чтобы при следующем заходе
+        // Начисляем только за минуты СВЕРХ lastAwardedMinute (из state)
+        const currentMinute = Math.floor(timerSeconds / 60);
+        const awardedMinute = state.lastAwardedMinute || 0;
+        if (currentMinute > awardedMinute) {
+          const delta = currentMinute - awardedMinute;
+          state.coins += COINS_PER_MINUTE * delta;
+          addXp(XP_PER_MINUTE * delta);
+          state.lastAwardedMinute = currentMinute;
+          bumpCoins();
+        }
+
+        // сдвигаем точку отсчёта, чтобы при следующем заходе
         // не начислить те же минуты повторно
         state.timerBaseSeconds = timerSeconds;
         state.timerStartedAt = nowIso();
@@ -2284,13 +2290,11 @@
         }
       }
 
-      // если таймер дошёл до 60:00 — начисляем бонус и сбрасываем
       if (timerSeconds >= TIMER_MAX_SECONDS) {
         finishHourBonus();
         return;
       }
     } else {
-      // таймер не идёт — просто берём baseSeconds
       const newSeconds = state.timerBaseSeconds || 0;
       if (newSeconds !== timerSeconds) {
         timerSeconds = newSeconds;
@@ -2321,7 +2325,6 @@
     function checkScroll() {
       const screenRect = screenPet.getBoundingClientRect();
       const feedRect = feedBtn.getBoundingClientRect();
-      // если кнопка «Покормить» уже видна в зоне экрана — прячем подсказку
       const feedVisible = feedRect.top < screenRect.bottom - 20;
       if (feedVisible) {
         hint.classList.add('hidden');
@@ -2332,7 +2335,6 @@
 
     screenPet.addEventListener('scroll', checkScroll);
     window.addEventListener('resize', checkScroll);
-    // первичная проверка после отрисовки
     setTimeout(checkScroll, 100);
   }
 
@@ -2342,7 +2344,6 @@
   function init() {
     const result = processDailyVisit();
 
-    // если питомец мёртв — сразу показываем экран смерти и выходим
     if (result.isDead) {
       showDeathScreen();
       return;
@@ -2361,14 +2362,10 @@
     }
   }
 
-  // при возврате на вкладку — подтягиваем актуальное время
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       syncTimerFromState();
-      if (timerRunning) {
-        // принудительно тикаем, чтобы «догнать» пропущенное время
-        timerTick();
-      }
+      if (timerRunning) timerTick();
     }
   });
 
@@ -2379,7 +2376,6 @@
 
   window.addEventListener('storage', (e) => {
     if (e.key === COOKIE_NAME) {
-      // перечитываем state из куки
       state = loadState();
       syncTimerFromState();
       updateUI();
