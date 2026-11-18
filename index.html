@@ -2089,6 +2089,11 @@
     timerSeconds += actualStep;
     state.totalTimerSeconds += actualStep;
 
+    // ВАЖНО: обновляем базу и точку отсчёта, чтобы при перезагрузке
+    // syncTimerFromState() не начислил те же минуты повторно
+    state.timerBaseSeconds = timerSeconds;
+    state.timerStartedAt = nowIso();
+
     const currentMinute = Math.floor(timerSeconds / 60);
     if (currentMinute > prevMinute) {
       const delta = currentMinute - prevMinute;
@@ -2101,6 +2106,7 @@
       spawnFloatingEmojis('🪙', 2, c.x, c.y);
       bumpCoins();
     }
+    saveState();
 
     updateTimerDisplay();
     updateUI();
