@@ -1227,7 +1227,7 @@
 <script>
 (function() {
   const COOKIE_NAME = 'readingPetState';
-  const COOKIE_MAX_AGE_DAYS = 30;
+  const COOKIE_MAX_AGE_DAYS = 365;
 
   const ALL_SKINS = [
     { id: 'default', name: 'Обычный',   cls: 'skin-default', level: 0,  color: '#f5a623' },
@@ -2072,6 +2072,17 @@
   }
 
   function timerTick() {
+    // Перечитываем state из куки — вдруг другая вкладка нажала паузу/сброс
+    const fresh = loadState();
+    if (fresh.timerRunning !== state.timerRunning ||
+        fresh.timerBaseSeconds !== state.timerBaseSeconds ||
+        fresh.timerStartedAt !== state.timerStartedAt ||
+        fresh.lastAwardedMinute !== state.lastAwardedMinute) {
+      state = fresh;
+      syncTimerFromState();
+      return;
+    }
+
     if (!timerRunning) return;
     if (timerSeconds >= TIMER_MAX_SECONDS) return;
 
@@ -2306,8 +2317,20 @@
         timerRunning = false;
         if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
         lastTickAt = null;
-        $('start-timer').textContent = '▶ Продолжить';
+        // если база 0 — это сброс, иначе пауза
+        if (state.timerBaseSeconds === 0) {
+          $('start-timer').textContent = '▶ Старт';
+        } else {
+          $('start-timer').textContent = '▶ Продолжить';
+        }
         $('timer-container').classList.remove('running');
+      } else {
+        // даже если timerRunning уже false, обновим кнопку на случай сброса из другой вкладки
+        if (state.timerBaseSeconds === 0) {
+          $('start-timer').textContent = '▶ Старт';
+        } else {
+          $('start-timer').textContent = '▶ Продолжить';
+        }
       }
     }
 
